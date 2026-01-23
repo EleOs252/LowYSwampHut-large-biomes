@@ -44,6 +44,14 @@ public class SearchCoords {
     private int currentThreadCount;
     private boolean currentCheckGeneration;
 
+    // ================= 线程缓存优化 =================
+    private static final ThreadLocal<NoiseCache> NOISE_CACHE =
+            new ThreadLocal<>();
+    private static final ThreadLocal<CheeseNoiseCache> CHEESE_CACHE =
+            new ThreadLocal<>();
+    private static final ThreadLocal<SeedChecker> SEED_CHECKER =
+            new ThreadLocal<>();
+
     public static class ProgressInfo {
         public final long processed;
         public final long total;
@@ -257,6 +265,11 @@ public class SearchCoords {
 
         @Override
         public void run() {
+            NOISE_CACHE.set(new NoiseCache(seed));
+            CHEESE_CACHE.set(new CheeseNoiseCache(seed));
+            SEED_CHECKER.set(
+                    new SeedChecker(seed, TargetState.NO_STRUCTURES, SeedCheckerDimension.OVERWORLD)
+            );
             // 将maxHeight转换为int，用于Box和check方法
             int maxHeightInt = (int) maxHeight;
             int expectedAirCount = 128 - (int)maxHeight;
@@ -393,7 +406,11 @@ public class SearchCoords {
     }
 
     public boolean check(long seed, int x, int z, int maxHeight) {
-        NoiseCache cache = new NoiseCache(seed);
+        NoiseCache cache = NOISE_CACHE.get();
+        if (cache == null) {
+            cache = new NoiseCache(seed);
+            NOISE_CACHE.set(cache);
+        }
         double erosionSample = cache.erosion.sample((double) x / 4, 0, (double) z / 4);
         if (erosionSample < 0.55) {
             return false;
@@ -497,7 +514,11 @@ public class SearchCoords {
     }
 
     public static double Entrance(long worldseed, int x, int y, int z) {
-        NoiseCache cache = new NoiseCache(worldseed);
+        NoiseCache cache = NOISE_CACHE.get();
+        if (cache == null) {
+            cache = new NoiseCache(worldseed);
+            NOISE_CACHE.set(cache);
+        }
         double c = cache.caveEntrance.sample(x * 0.75, y * 0.5, z * 0.75) + 0.37 +
                 MathHelper.clampedLerp(0.3, 0.0, (10 + (double) y) / 40.0);
         double d = cache.spaghettiRarity.sample(x * 2, y, z * 2);
@@ -514,14 +535,24 @@ public class SearchCoords {
     }
 
     public static double Cheese(long worldseed, int x, int y, int z) {
-        CheeseNoiseCache cache = new CheeseNoiseCache(worldseed);
+        CheeseNoiseCache cache = CHEESE_CACHE.get();
+        if (cache == null) {
+            cache = new CheeseNoiseCache(worldseed);
+            CHEESE_CACHE.set(cache);
+        }
+
         double a = 4 * cache.caveLayer.sample(x, y * 8, z) * cache.caveLayer.sample(x, y * 8, z);
         double b = MathHelper.clamp((0.27 + cache.caveCheese.sample(x, y * 0.6666666666666666, z)), -1, 1);
         return a + b;//Actually there still need to add a function about sloped_cheese, but sloped_cheese is too complex and IDK how to calculate it.
     }
 
     public static double Entrance2(long worldseed, int x, int y, int z) {
-        NoiseCache cache = new NoiseCache(worldseed);
+        NoiseCache cache = NOISE_CACHE.get();
+        if (cache == null) {
+            cache = new NoiseCache(worldseed);
+            NOISE_CACHE.set(cache);
+        }
+
         double d = cache.spaghettiRarity.sample(x * 2, y, z * 2);
         double e = NoiseColumnSampler.CaveScaler.scaleTunnels(d);
         double h = Util.lerpFromProgress(cache.spaghettiThickness, x, y, z, 0.065, 0.088);
