@@ -27,7 +27,6 @@ public class LowYSwampHutForFixedSeed extends JFrame {
     private static final int DEFAULT_LIST_MAX_X = 128;
     private static final int DEFAULT_LIST_MIN_Z = -128;
     private static final int DEFAULT_LIST_MAX_Z = 128;
-    private static final int DEFAULT_THREAD_COUNT = 8;
     
     // 单种子搜索相关组件
     private JLabel searchSeedLabel;
@@ -234,7 +233,7 @@ public class LowYSwampHutForFixedSeed extends JFrame {
         gbc.gridx = 1;
         gbc.fill = GridBagConstraints.HORIZONTAL;
         gbc.weightx = 1.0;
-        searchThreadCountField = new JTextField(String.valueOf(DEFAULT_THREAD_COUNT), 20);
+        searchThreadCountField = new JTextField(String.valueOf(Runtime.getRuntime().availableProcessors()), 20);
         // 添加输入验证，非整数时提示
         searchThreadCountField.addFocusListener(new java.awt.event.FocusAdapter() {
             public void focusLost(java.awt.event.FocusEvent e) {
@@ -1056,7 +1055,7 @@ public class LowYSwampHutForFixedSeed extends JFrame {
         gbc.gridx = 1;
         gbc.fill = GridBagConstraints.HORIZONTAL;
         gbc.weightx = 1.0;
-        listSearchThreadCountField = new JTextField(String.valueOf(DEFAULT_THREAD_COUNT), 20);
+        listSearchThreadCountField = new JTextField(String.valueOf(Runtime.getRuntime().availableProcessors()), 20);
         listSearchThreadCountField.addFocusListener(new java.awt.event.FocusAdapter() {
             public void focusLost(java.awt.event.FocusEvent e) {
                 validateIntegerInput(listSearchThreadCountField, getString("label.threadCount").replace(":", ""));

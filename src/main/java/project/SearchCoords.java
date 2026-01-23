@@ -304,7 +304,7 @@ public class SearchCoords {
                                 if (result.height <= maxHeight) {
                                     String resultStr = result.toString();
                                     // 如果开启了精确检查，检查女巫小屋是否可以生成
-                                    if (checkGeneration && !checkHutGeneration(seed, hutX, hutZ)) {
+                                    if (checkGeneration && !checkHutGeneration(seed, hutX, hutZ, maxHeight)) {
                                         resultStr += " x";
                                     }
                                     synchronized (results) {
@@ -353,10 +353,11 @@ public class SearchCoords {
     }
 
     // 检查女巫小屋是否可以生成（检查云杉木板）
-    public static boolean checkHutGeneration(long seed, int hutX, int hutZ) {
+    public static boolean checkHutGeneration(long seed, int hutX, int hutZ, double maxHeight) {
         SeedChecker checker = new SeedChecker(seed, TargetState.STRUCTURES, SeedCheckerDimension.OVERWORLD);
         try {
-            for (int y = 60; y >= -54; y--) {
+            int startY = (int)(maxHeight + 10);
+            for (int y = startY; y >= -54; y--) {
                 if (checker.getBlock(hutX + 2, y, hutZ + 2) == Blocks.SPRUCE_PLANKS) {
                     return true;
                 }
