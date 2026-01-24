@@ -15,6 +15,7 @@ import nl.kallestruik.noisesampler.minecraft.Xoroshiro128PlusPlusRandom;
 import nl.kallestruik.noisesampler.minecraft.noise.LazyDoublePerlinNoiseSampler;
 import nl.kallestruik.noisesampler.minecraft.util.MathHelper;
 import nl.kallestruik.noisesampler.minecraft.util.Util;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -43,6 +44,7 @@ public class SearchCoords {
     private Consumer<String> currentResultCallback;
     private int currentThreadCount;
     private boolean currentCheckGeneration;
+    private boolean currentNeedCache;
 
     // ================= 线程缓存优化 =================
     private static final ThreadLocal<NoiseCache> NOISE_CACHE =
@@ -52,20 +54,7 @@ public class SearchCoords {
     private static final ThreadLocal<SeedChecker> SEED_CHECKER =
             new ThreadLocal<>();
 
-    public static class ProgressInfo {
-        public final long processed;
-        public final long total;
-        public final double percentage;
-        public final long elapsedMs;
-        public final long remainingMs;
-
-        public ProgressInfo(long processed, long total, double percentage, long elapsedMs, long remainingMs) {
-            this.processed = processed;
-            this.total = total;
-            this.percentage = percentage;
-            this.elapsedMs = elapsedMs;
-            this.remainingMs = remainingMs;
-        }
+    public record ProgressInfo(long processed, long total, double percentage, long elapsedMs, long remainingMs) {
     }
 
     public SearchCoords(MCVersion mcVersion) {
@@ -88,6 +77,8 @@ public class SearchCoords {
         results.clear();
 
         long totalTasks = (long) (maxX - minX) * (maxZ - minZ);
+        // 如果单种子搜索范围<500*500区块，那不用缓存更快，否则用缓存更快
+        currentNeedCache = totalTasks >= 250000;
 
         // 保存当前搜索状态
         currentSeed = seed;
@@ -153,7 +144,7 @@ public class SearchCoords {
         for (int i = 0; i < threadCount; i++) {
             int startX = minX + i * chunkSize;
             int endX = (i == threadCount - 1) ? maxX : startX + chunkSize;
-            executor.execute(new RegionChecker(seed, startX, endX, minZ, maxZ, maxHeight, processedCount, resultCallback, checkGeneration));
+            executor.execute(new RegionChecker(seed, startX, endX, minZ, maxZ, maxHeight, processedCount, resultCallback, checkGeneration, currentNeedCache));
         }
         executor.shutdown();
 
@@ -214,7 +205,7 @@ public class SearchCoords {
             int startX = currentMinX + i * chunkSize;
             int endX = (i == newThreadCount - 1) ? currentMaxX : startX + chunkSize;
             executor.execute(new RegionChecker(currentSeed, startX, endX, currentMinZ, currentMaxZ, currentMaxHeight, 
-                    currentProcessedCount, currentResultCallback, currentCheckGeneration));
+                    currentProcessedCount, currentResultCallback, currentCheckGeneration, currentNeedCache));
         }
         executor.shutdown();
         
@@ -249,8 +240,9 @@ public class SearchCoords {
         private final AtomicLong processedCount;
         private final Consumer<String> resultCallback;
         private final boolean checkGeneration;
+        private final boolean needCache;
 
-        public RegionChecker(long seed, int startX, int endX, int minZ, int maxZ, double maxHeight, AtomicLong processedCount, Consumer<String> resultCallback, boolean checkGeneration) {
+        public RegionChecker(long seed, int startX, int endX, int minZ, int maxZ, double maxHeight, AtomicLong processedCount, Consumer<String> resultCallback, boolean checkGeneration, boolean needCache) {
             this.seed = seed;
             this.startX = startX;
             this.endX = endX;
@@ -261,19 +253,22 @@ public class SearchCoords {
             this.processedCount = processedCount;
             this.resultCallback = resultCallback;
             this.checkGeneration = checkGeneration;
+            this.needCache = needCache;
         }
 
         @Override
         public void run() {
-            NOISE_CACHE.set(new NoiseCache(seed));
-            CHEESE_CACHE.set(new CheeseNoiseCache(seed));
-            SEED_CHECKER.set(
-                    new SeedChecker(seed, TargetState.NO_STRUCTURES, SeedCheckerDimension.OVERWORLD)
-            );
+            // 根据任务规模决定是否预先初始化线程本地缓存
+            // 注意：即使不预热，后续调用处也会按需创建并写入 ThreadLocal
+            if (needCache) {
+                NOISE_CACHE.set(new NoiseCache(seed));
+                CHEESE_CACHE.set(new CheeseNoiseCache(seed));
+                SEED_CHECKER.set(new SeedChecker(seed, TargetState.NO_STRUCTURES, SeedCheckerDimension.OVERWORLD));
+            }
             // 将maxHeight转换为int，用于Box和check方法
             int maxHeightInt = (int) maxHeight;
-            int expectedAirCount = 128 - (int)maxHeight;
-            
+            int expectedAirCount = 128 - (int) maxHeight;
+
             for (int x = startX; x < endX && isRunning; x++) {
                 for (int z = minZ; z < maxZ && isRunning; z++) {
                     // 暂停时等待
@@ -289,68 +284,68 @@ public class SearchCoords {
                         break;
                     }
                     CPos pos = swampHut.getInRegion(seed, x, z, rand);
-                    if (SearchCoords.this.check(seed, 16 * pos.getX() + 3, 16 * pos.getZ() + 3, maxHeightInt)) {
-                        try {
-                            SeedChecker checker = new SeedChecker(seed, TargetState.NO_STRUCTURES, SeedCheckerDimension.OVERWORLD);
-                            Box box = new Box(16 * pos.getX() + 3, maxHeightInt, 16 * pos.getZ() + 3,
-                                    16 * pos.getX() + 4, 128, 16 * pos.getZ() + 4);
-                            if (checker.getBlockCountInBox(Blocks.AIR, box) == expectedAirCount) {
-                                // 计算女巫小屋的实际高度
-                                int hutX = 16 * pos.getX();
-                                int hutZ = 16 * pos.getZ();
-                                Result result = checkHeight(seed, hutX, hutZ, mcVersion);
-                                
-                                // 只有当高度 <= maxHeight 时才输出
-                                if (result.height <= maxHeight) {
-                                    String resultStr = result.toString();
-                                    // 如果开启了精确检查，检查女巫小屋是否可以生成
-                                    if (checkGeneration && !checkHutGeneration(seed, hutX, hutZ, maxHeight)) {
-                                        resultStr += " x";
-                                    }
-                                    synchronized (results) {
-                                        results.add(resultStr);
-                                    }
-                                    if (resultCallback != null) {
-                                        resultCallback.accept(resultStr);
-                                    }
-                                }
-                            }
-                            checker.clearMemory();
-                        } catch (NoClassDefFoundError | ExceptionInInitializerError e) {
-                            // 如果 SeedChecker 初始化失败（通常是 log4j 问题），跳过这个坐标
-                            // 这不应该阻止程序继续运行
-                            if (e.getCause() != null && e.getCause().getMessage() != null &&
-                                e.getCause().getMessage().contains("No class provided")) {
-                                // 这是 log4j 的调用者查找问题，跳过这个坐标
-                                continue;
-                            }
-                            throw e;
-                        }
+                    // 检查噪声和群系条件
+                    if (!SearchCoords.this.check(seed, 16 * pos.getX() + 3, 16 * pos.getZ() + 3, maxHeightInt)) {
+                        // 更新进度计数器
+                        processedCount.incrementAndGet();
+                        continue;
                     }
-                    // 更新进度计数器
-                    processedCount.incrementAndGet();
+                    try {
+                        // 计算该点的实际高度
+                        SeedChecker checker = new SeedChecker(seed, TargetState.NO_STRUCTURES, SeedCheckerDimension.OVERWORLD);
+                        Box box = new Box(16 * pos.getX() + 3, maxHeightInt, 16 * pos.getZ() + 3,
+                                16 * pos.getX() + 4, 128, 16 * pos.getZ() + 4);
+                        if (checker.getBlockCountInBox(Blocks.AIR, box) != expectedAirCount) {
+                            checker.clearMemory();
+                            continue;
+                        }
+                        // 计算整个女巫小屋的实际高度
+                        int hutX = 16 * pos.getX();
+                        int hutZ = 16 * pos.getZ();
+                        Result result = checkHeight(seed, hutX, hutZ, mcVersion);
+
+                        // 只有当高度 <= maxHeight 时才输出
+                        if (!(result.height <= maxHeight)) {
+                            checker.clearMemory();
+                            continue;
+                        }
+                        // 如果开启了精确检查，检查女巫小屋是否可以生成
+                        String resultStr = result.toString();
+                        if (checkGeneration && !checkHutGeneration(seed, hutX, hutZ, maxHeight)) {
+                            resultStr += " x";
+                        }
+                        synchronized (results) {
+                            results.add(resultStr);
+                        }
+                        if (resultCallback != null) {
+                            resultCallback.accept(resultStr);
+                        }
+                        checker.clearMemory();
+                    } catch (NoClassDefFoundError | ExceptionInInitializerError e) {
+                        // 如果 SeedChecker 初始化失败（通常是 log4j 问题），跳过这个坐标
+                        // 这不应该阻止程序继续运行
+                        if (e.getCause() != null && e.getCause().getMessage() != null && e.getCause().getMessage().contains("No class provided")) {
+                            // 这是 log4j 的调用者查找问题，跳过这个坐标
+                            continue;
+                        }
+                        throw e;
+                    }
                 }
+                // 更新进度计数器
+                processedCount.incrementAndGet();
             }
         }
     }
 
     // Result类，用于返回坐标和高度
-    public static class Result {
-        public final int x;
-        public final int z;
-        public final double height;
+        public record Result(int x, int z, double height) {
 
-        public Result(int x, int z, double height) {
-            this.x = x;
-            this.z = z;
-            this.height = height;
-        }
-
+        @NotNull
         @Override
-        public String toString() {
-            return String.format("/tp %d %.0f %d", x, height, z);
+            public String toString() {
+                return String.format("/tp %d %.0f %d", x, height, z);
+            }
         }
-    }
 
     // 检查女巫小屋是否可以生成（检查云杉木板）
     public static boolean checkHutGeneration(long seed, int hutX, int hutZ, double maxHeight) {
@@ -375,7 +370,7 @@ public class SearchCoords {
         rand.setCarverSeed(structureSeed, x / 16, z / 16, mcVersion);
         float a = rand.nextFloat();
         SeedChecker checker = new SeedChecker(seed, TargetState.NO_STRUCTURES, SeedCheckerDimension.OVERWORLD);
-        int totalheight = 0;
+        int totalHeight = 0;
         if (a < 0.25F || (a >= 0.5F && a < 0.75F)) {
             for (int i = x; i < x + 7; i++) {
                 for (int j = z; j < z + 9; j++) {
@@ -383,7 +378,7 @@ public class SearchCoords {
                     for (int k = 200; k >= -55 && !checked; k--) {
                         if (!checker.getBlockState(i, k, j).isAir()) {
                             checked = true;
-                            totalheight += k;
+                            totalHeight += k;
                         }
                     }
                 }
@@ -395,22 +390,26 @@ public class SearchCoords {
                     for (int k = 200; k >= -55 && !checked; k--) {
                         if (!checker.getBlockState(i, k, j).isAir()) {
                             checked = true;
-                            totalheight += k;
+                            totalHeight += k;
                         }
                     }
                 }
             }
         }
-        int height = (int) Math.ceil(((double) totalheight / 63) + 1);
+        int height = (int) Math.ceil(((double) totalHeight / 63) + 1);
         checker.clearMemory();
         return new Result(x, z, height);
     }
 
     public boolean check(long seed, int x, int z, int maxHeight) {
-        NoiseCache cache = NOISE_CACHE.get();
-        if (cache == null) {
+        NoiseCache cache;
+        if (currentNeedCache && NOISE_CACHE.get() != null) {
+            cache = NOISE_CACHE.get();
+        } else {
             cache = new NoiseCache(seed);
-            NOISE_CACHE.set(cache);
+            if (currentNeedCache) {
+                NOISE_CACHE.set(cache);
+            }
         }
         double erosionSample = cache.erosion.sample((double) x / 4, 0, (double) z / 4);
         if (erosionSample < 0.55) {
@@ -431,27 +430,27 @@ public class SearchCoords {
         if ((ridge > 0.46 && ridge < 0.88) || (ridge < -0.46 && ridge > -0.88)) {
             return false;
         }
-        if (Entrance(seed, x, 50, z) >= 0) {
+        if (Entrance(seed, x, 50, z, currentNeedCache) >= 0) {
             return false;
         }
-        if (Entrance(seed, x, 60, z) >= 0) {
+        if (Entrance(seed, x, 60, z, currentNeedCache) >= 0) {
             return false;
         }
         // 检查maxHeight本身
-        if (Entrance2(seed, x, maxHeight, z) >= 0 && Cheese(seed, x, maxHeight, z) >= 0) {
+        if (Entrance2(seed, x, maxHeight, z, currentNeedCache) >= 0 && Cheese(seed, x, maxHeight, z, currentNeedCache) >= 0) {
             return false;
         }
         // 0以下使用Entrance2
         for (int y = 0; y >= -40; y -= 10) {
             if (maxHeight < y) {
-                if (Entrance2(seed, x, y, z) >= 0 && Cheese(seed, x, y, z) >= 0) {
+                if (Entrance2(seed, x, y, z, currentNeedCache) >= 0 && Cheese(seed, x, y, z, currentNeedCache) >= 0) {
                     return false;
                 }
             }
         }
         // 10-40使用Entrance（较复杂）
         for (int y = 10; y <= 40; y += 10) {
-            if (Entrance(seed, x, y, z) >= 0 && Cheese(seed, x, y, z) >= 0) {
+            if (Entrance(seed, x, y, z, currentNeedCache) >= 0 && Cheese(seed, x, y, z, currentNeedCache) >= 0) {
                 return false;
             }
         }
@@ -486,8 +485,8 @@ public class SearchCoords {
         final LazyDoublePerlinNoiseSampler temperature;
         final LazyDoublePerlinNoiseSampler ridge;
 
-        NoiseCache(long worldseed) {
-            Xoroshiro128PlusPlusRandom random = new Xoroshiro128PlusPlusRandom(worldseed);
+        NoiseCache(long worldSeed) {
+            Xoroshiro128PlusPlusRandom random = new Xoroshiro128PlusPlusRandom(worldSeed);
             var deriver = random.createRandomDeriver();
             caveEntrance = LazyDoublePerlinNoiseSampler.createNoiseSampler(deriver, NoiseParameterKey.CAVE_ENTRANCE);
             spaghettiRarity = LazyDoublePerlinNoiseSampler.createNoiseSampler(deriver, NoiseParameterKey.SPAGHETTI_3D_RARITY);
@@ -506,19 +505,23 @@ public class SearchCoords {
         final LazyDoublePerlinNoiseSampler caveLayer;
         final LazyDoublePerlinNoiseSampler caveCheese;
 
-        CheeseNoiseCache(long worldseed) {
-            Xoroshiro128PlusPlusRandom random = new Xoroshiro128PlusPlusRandom(worldseed);
+        CheeseNoiseCache(long worldSeed) {
+            Xoroshiro128PlusPlusRandom random = new Xoroshiro128PlusPlusRandom(worldSeed);
             var deriver = random.createRandomDeriver();
             caveLayer = LazyDoublePerlinNoiseSampler.createNoiseSampler(deriver, NoiseParameterKey.CAVE_LAYER);
             caveCheese = LazyDoublePerlinNoiseSampler.createNoiseSampler(deriver, NoiseParameterKey.CAVE_CHEESE);
         }
     }
 
-    public static double Entrance(long worldseed, int x, int y, int z) {
-        NoiseCache cache = NOISE_CACHE.get();
-        if (cache == null) {
-            cache = new NoiseCache(worldseed);
-            NOISE_CACHE.set(cache);
+    public static double Entrance(long worldSeed, int x, int y, int z, boolean needCache) {
+        NoiseCache cache;
+        if (needCache && NOISE_CACHE.get() != null) {
+            cache = NOISE_CACHE.get();
+        } else {
+            cache = new NoiseCache(worldSeed);
+            if (needCache) {
+                NOISE_CACHE.set(cache);
+            }
         }
         double c = cache.caveEntrance.sample(x * 0.75, y * 0.5, z * 0.75) + 0.37 +
                 MathHelper.clampedLerp(0.3, 0.0, (10 + (double) y) / 40.0);
@@ -535,25 +538,31 @@ public class SearchCoords {
         return Math.min(c, p + q);
     }
 
-    public static double Cheese(long worldseed, int x, int y, int z) {
-        CheeseNoiseCache cache = CHEESE_CACHE.get();
-        if (cache == null) {
-            cache = new CheeseNoiseCache(worldseed);
-            CHEESE_CACHE.set(cache);
+    public static double Cheese(long worldSeed, int x, int y, int z, boolean needCache) {
+        CheeseNoiseCache cache;
+        if (needCache && CHEESE_CACHE.get() != null) {
+            cache = CHEESE_CACHE.get();
+        } else {
+            cache = new CheeseNoiseCache(worldSeed);
+            if (needCache) {
+                CHEESE_CACHE.set(cache);
+            }
         }
-
         double a = 4 * cache.caveLayer.sample(x, y * 8, z) * cache.caveLayer.sample(x, y * 8, z);
         double b = MathHelper.clamp((0.27 + cache.caveCheese.sample(x, y * 0.6666666666666666, z)), -1, 1);
         return a + b;//Actually there still need to add a function about sloped_cheese, but sloped_cheese is too complex and IDK how to calculate it.
     }
 
-    public static double Entrance2(long worldseed, int x, int y, int z) {
-        NoiseCache cache = NOISE_CACHE.get();
-        if (cache == null) {
-            cache = new NoiseCache(worldseed);
-            NOISE_CACHE.set(cache);
+    public static double Entrance2(long worldSeed, int x, int y, int z, boolean needCache) {
+        NoiseCache cache;
+        if (needCache && NOISE_CACHE.get() != null) {
+            cache = NOISE_CACHE.get();
+        } else {
+            cache = new NoiseCache(worldSeed);
+            if (needCache) {
+                NOISE_CACHE.set(cache);
+            }
         }
-
         double d = cache.spaghettiRarity.sample(x * 2, y, z * 2);
         double e = NoiseColumnSampler.CaveScaler.scaleTunnels(d);
         double h = Util.lerpFromProgress(cache.spaghettiThickness, x, y, z, 0.065, 0.088);
