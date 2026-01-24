@@ -2119,6 +2119,63 @@ public class LowYSwampHutForFixedSeed extends JFrame {
             final int finalThreadCount = threadCount;
             final long totalSeeds = seeds.size();
             final long startTime = System.currentTimeMillis();
+            // 暂停时间跟踪
+            final long[] pausedTimeRef = {0}; // 累计暂停时间
+            final long[] pauseStartTimeRef = {0}; // 暂停开始时间
+            
+            // 启动进度监控线程，定期更新时间显示
+            Thread progressMonitorThread = new Thread(() -> {
+                while (isListSearchRunning) {
+                    try {
+                        Thread.sleep(100); // 每100ms更新一次
+                        
+                        // 更新暂停时间跟踪
+                        if (isListSearchPaused) {
+                            // 记录暂停开始时间
+                            if (pauseStartTimeRef[0] == 0) {
+                                pauseStartTimeRef[0] = System.currentTimeMillis();
+                            }
+                        } else {
+                            // 如果从暂停恢复，累计暂停时间
+                            if (pauseStartTimeRef[0] > 0) {
+                                pausedTimeRef[0] += System.currentTimeMillis() - pauseStartTimeRef[0];
+                                pauseStartTimeRef[0] = 0;
+                            }
+                        }
+                        
+                        // 计算实际已用时间（排除暂停时间）
+                        long currentPausedTime = pausedTimeRef[0];
+                        if (pauseStartTimeRef[0] > 0) {
+                            // 如果当前正在暂停，也要计入当前暂停时间
+                            currentPausedTime += System.currentTimeMillis() - pauseStartTimeRef[0];
+                        }
+                        final long elapsedMs = System.currentTimeMillis() - startTime - currentPausedTime;
+                        
+                        // 获取当前完成的种子数（需要从UI获取或使用共享变量）
+                        SwingUtilities.invokeLater(() -> {
+                            int currentProgress = listSearchProgressBar.getValue();
+                            if (currentProgress > 0 && currentProgress < totalSeeds) {
+                                final long remainingMs = elapsedMs > 0 ? (elapsedMs * (totalSeeds - currentProgress) / currentProgress) : 0;
+                                if (!isListSearchPaused) {
+                                    listSearchElapsedTimeLabel.setText(getString("elapsedTime", formatTime(elapsedMs)));
+                                    if (remainingMs > 0) {
+                                        listSearchRemainingTimeLabel.setText(getString("remainingTime", formatTime(remainingMs)));
+                                    } else {
+                                        listSearchRemainingTimeLabel.setText(getString("remainingTime.calculating"));
+                                    }
+                                } else {
+                                    listSearchRemainingTimeLabel.setText(getString("remainingTime.paused"));
+                                }
+                            }
+                        });
+                    } catch (InterruptedException e) {
+                        break;
+                    }
+                }
+            });
+            progressMonitorThread.setDaemon(true);
+            progressMonitorThread.start();
+            
             new Thread(() -> {
                 final int[] processedSeedsRef = {0};
                 
@@ -2158,7 +2215,7 @@ public class LowYSwampHutForFixedSeed extends JFrame {
                     
                     // 等待当前种子搜索完成
                     while (listSearcher.isRunning() && isListSearchRunning) {
-                        // 暂停时等待
+                        // 暂停时等待（暂停时间跟踪由进度监控线程处理）
                         while (isListSearchPaused && isListSearchRunning) {
                             try {
                                 Thread.sleep(100);
@@ -2182,7 +2239,13 @@ public class LowYSwampHutForFixedSeed extends JFrame {
                     
                     // 更新进度条：完成种子数/总种子数
                     final int completedSeeds = processedSeedsRef[0];
-                    final long elapsedMs = System.currentTimeMillis() - startTime;
+                    // 计算实际已用时间（排除暂停时间）
+                    long currentPausedTime = pausedTimeRef[0];
+                    if (pauseStartTimeRef[0] > 0) {
+                        // 如果当前正在暂停，也要计入当前暂停时间
+                        currentPausedTime += System.currentTimeMillis() - pauseStartTimeRef[0];
+                    }
+                    final long elapsedMs = System.currentTimeMillis() - startTime - currentPausedTime;
                     final long remainingMs = completedSeeds > 0 ? (elapsedMs * (totalSeeds - completedSeeds) / completedSeeds) : 0;
                     final double percentage = (double) completedSeeds / totalSeeds * 100.0;
                     
@@ -2213,7 +2276,13 @@ public class LowYSwampHutForFixedSeed extends JFrame {
                 }
                 
                 // 所有种子处理完成
-                final long finalElapsedMs = System.currentTimeMillis() - startTime;
+                // 计算最终已用时间（排除暂停时间）
+                long finalPausedTime = pausedTimeRef[0];
+                if (pauseStartTimeRef[0] > 0) {
+                    // 如果结束时还在暂停，也要计入当前暂停时间
+                    finalPausedTime += System.currentTimeMillis() - pauseStartTimeRef[0];
+                }
+                final long finalElapsedMs = System.currentTimeMillis() - startTime - finalPausedTime;
                 SwingUtilities.invokeLater(() -> {
                     isListSearchRunning = false;
                     isListSearchPaused = false;
