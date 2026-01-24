@@ -27,7 +27,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 public class SearchCoords {
-    
+
     private final SwampHut swampHut;
     private final MCVersion mcVersion;
     private ExecutorService executor;
@@ -35,7 +35,7 @@ public class SearchCoords {
     private volatile boolean isRunning = false;
     private volatile boolean isPaused = false;
     private final List<String> results = new ArrayList<>();
-    
+
     // 保存当前搜索状态，用于动态调整线程数
     private long currentSeed;
     private int currentMinX, currentMaxX, currentMinZ, currentMaxZ;
@@ -63,13 +63,13 @@ public class SearchCoords {
     }
 
     public void startSearch(long seed, int threadCount, int minX, int maxX, int minZ, int maxZ, double maxHeight,
-                          Consumer<ProgressInfo> progressCallback, Consumer<String> resultCallback, boolean checkGeneration) {
+                            Consumer<ProgressInfo> progressCallback, Consumer<String> resultCallback, boolean checkGeneration) {
         // 如果正在运行且处于暂停状态，且线程数变化，则调整线程数
         if (isRunning && isPaused && threadCount != currentThreadCount) {
             adjustThreadCount(threadCount, resultCallback, checkGeneration);
             return;
         }
-        
+
         if (isRunning) {
             return;
         }
@@ -107,7 +107,7 @@ public class SearchCoords {
                     Thread.sleep(100); // 每100ms更新一次
                     long processed = processedCount.get();
                     double percentage = (double) processed / totalTasks * 100.0;
-                    
+
                     // 如果暂停，更新暂停时间
                     if (isPaused) {
                         pauseStartTime.updateAndGet(start -> start == 0 ? System.currentTimeMillis() : start);
@@ -118,7 +118,7 @@ public class SearchCoords {
                             pausedTime.addAndGet(System.currentTimeMillis() - pauseStart);
                         }
                     }
-                    
+
                     // 计算实际已用时间（排除暂停时间）
                     long elapsed = System.currentTimeMillis() - startTime - pausedTime.get();
                     long remaining = processed > 0 ? (elapsed * (totalTasks - processed) / processed) : 0;
@@ -178,37 +178,37 @@ public class SearchCoords {
     public void resume() {
         isPaused = false;
     }
-    
+
     // 动态调整线程数，保持进度继续
     private void adjustThreadCount(int newThreadCount, Consumer<String> resultCallback, boolean checkGeneration) {
         if (newThreadCount < 1) {
             return;
         }
-        
+
         // 停止当前的executor
         if (executor != null && !executor.isShutdown()) {
             executor.shutdownNow();
         }
-        
+
         // 更新线程数
         currentThreadCount = newThreadCount;
         currentResultCallback = resultCallback;
         currentCheckGeneration = checkGeneration;
-        
+
         // 创建新的executor
         executor = Executors.newFixedThreadPool(newThreadCount);
         int totalX = currentMaxX - currentMinX;
         int chunkSize = Math.max(1, totalX / newThreadCount);
-        
+
         // 重新分配任务（使用相同的进度计数器，保持进度）
         for (int i = 0; i < newThreadCount; i++) {
             int startX = currentMinX + i * chunkSize;
             int endX = (i == newThreadCount - 1) ? currentMaxX : startX + chunkSize;
-            executor.execute(new RegionChecker(currentSeed, startX, endX, currentMinZ, currentMaxZ, currentMaxHeight, 
+            executor.execute(new RegionChecker(currentSeed, startX, endX, currentMinZ, currentMaxZ, currentMaxHeight,
                     currentProcessedCount, currentResultCallback, currentCheckGeneration, currentNeedCache));
         }
         executor.shutdown();
-        
+
         // 恢复执行（不再暂停）
         isPaused = false;
     }
@@ -224,7 +224,7 @@ public class SearchCoords {
     public List<String> getResults() {
         return new ArrayList<>(results);
     }
-    
+
     public MCVersion getMCVersion() {
         return mcVersion;
     }
@@ -338,20 +338,20 @@ public class SearchCoords {
     }
 
     // Result类，用于返回坐标和高度
-        public record Result(int x, int z, double height) {
+    public record Result(int x, int z, double height) {
 
         @NotNull
         @Override
-            public String toString() {
-                return String.format("/tp %d %.0f %d", x, height, z);
-            }
+        public String toString() {
+            return String.format("/tp %d %.0f %d", x, height, z);
         }
+    }
 
     // 检查女巫小屋是否可以生成（检查云杉木板）
     public static boolean checkHutGeneration(long seed, int hutX, int hutZ, double maxHeight) {
         SeedChecker checker = new SeedChecker(seed, TargetState.STRUCTURES, SeedCheckerDimension.OVERWORLD);
         try {
-            int startY = (int)(maxHeight + 10);
+            int startY = (int) (maxHeight + 10);
             for (int y = startY; y >= -54; y--) {
                 if (checker.getBlock(hutX + 2, y, hutZ + 2) == Blocks.SPRUCE_PLANKS) {
                     return true;

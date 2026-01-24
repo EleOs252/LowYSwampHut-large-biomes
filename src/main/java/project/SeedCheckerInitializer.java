@@ -10,7 +10,7 @@ import nl.jellejurre.seedchecker.TargetState;
 public class SeedCheckerInitializer {
     private static volatile boolean initialized = false;
     private static final Object lock = new Object();
-    
+
     /**
      * 在主线程中初始化 SeedCheckerSettings
      * 这必须在任何多线程使用 SeedChecker 之前调用
@@ -33,7 +33,7 @@ public class SeedCheckerInitializer {
                 } catch (Exception e) {
                     // 如果反射失败，继续尝试
                 }
-                
+
                 // 在主线程中创建 SeedChecker 实例以触发 SeedCheckerSettings 的初始化
                 // 这必须在任何多线程使用之前完成
                 // 使用同步块确保只有一个线程初始化
@@ -47,12 +47,11 @@ public class SeedCheckerInitializer {
                 // 如果初始化失败，尝试使用不同的方法
                 // 这可能是因为 log4j 在 Shadow JAR 中无法找到调用类
                 Throwable cause = e.getCause();
-                if (cause != null && cause.getMessage() != null && 
-                    cause.getMessage().contains("No class provided")) {
+                if (cause != null && cause.getMessage() != null && cause.getMessage().contains("No class provided")) {
                     // 这是 log4j 的调用者查找问题
                     System.err.println("Warning: log4j caller class issue detected in Shadow JAR.");
                     System.err.println("Attempting alternative initialization...");
-                    
+
                     // 尝试延迟初始化，让 log4j 在第一次使用时再初始化
                     // 标记为已初始化，但实际初始化会在第一次使用时进行
                     initialized = true;

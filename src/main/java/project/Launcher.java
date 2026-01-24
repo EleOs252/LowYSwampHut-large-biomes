@@ -20,11 +20,11 @@ public class Launcher {
         // 禁用直接编码器，避免调用者类查找问题
         System.setProperty("log4j2.enable.direct.encoders", "false");
     }
-    
+
     public static void main(String[] args) {
         // 首先设置 ThreadContext，为 log4j 提供调用者信息
         ThreadContext.put("callerClass", Launcher.class.getName());
-        
+
         // 初始化 log4j，获取一个 logger 来触发初始化
         // 这必须在任何使用 log4j 的类之前完成
         try {
@@ -33,7 +33,7 @@ public class Launcher {
             System.err.println("Warning: Could not initialize log4j: " + e.getMessage());
             e.printStackTrace();
         }
-        
+
         // 预先加载并初始化 net.minecraft.SharedConstants 类
         // 这必须在主线程中完成，以确保 log4j 可以正确找到调用类
         try {
@@ -54,7 +54,7 @@ public class Launcher {
             System.err.println("Warning: Error loading SharedConstants: " + e.getMessage());
             e.printStackTrace();
         }
-        
+
         // 调用实际的 main 方法
         LowYSwampHutForFixedSeed.main(args);
     }
