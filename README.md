@@ -1,16 +1,26 @@
 # LowYSwampHut Search Tool
 
-A GUI program for searching low Y-coordinate Swamp Huts in Minecraft Java Edition. This program supports versions 1.18.2, 1.19.2, 1.20.1, and 1.21.1.
+A GUI program for searching low Y-coordinate Swamp Huts in Minecraft Java Edition. This fork supports both Normal and Large Biomes world presets for versions 1.18.2, 1.19.2, 1.20.1, and 1.21.1.
 
 # 低y女巫小屋搜索工具
 
-一个用于搜索 Minecraft Java 版低 Y 坐标女巫小屋的 GUI 程序。本程序支持 1.18.2、1.19.2、1.20.1 和 1.21.1 版本。
+一个用于搜索 Minecraft Java 版低 Y 坐标女巫小屋的 GUI 程序。这个 fork 支持普通世界和巨型生物群系两种世界预设，并支持 1.18.2、1.19.2、1.20.1 和 1.21.1 版本。
+
+## Fork Notes / Fork 说明
+
+- This repository is a fork of [M33Galaxy/LowYSwampHut](https://github.com/M33Galaxy/LowYSwampHut).
+- Added support for the **Large Biomes** world preset in both single-seed and seed-list search modes.
+- The current prebuilt jar in this fork is built with **JDK 21** and should be run with **Java 21 or higher**.
+
+- 此仓库是 [M33Galaxy/LowYSwampHut](https://github.com/M33Galaxy/LowYSwampHut) 的 fork。
+- 已为**单种子搜索**和**从种子列表搜索**添加 **巨型生物群系** 世界预设支持。
+- 当前此 fork 提供的预编译 jar 使用 **JDK 21** 构建，运行时建议使用 **Java 21 或更高版本**。
 
 ## How to Run / 如何运行
 
-**This program requires Java 17 or higher.** Please make sure you have Java installed.
+**The prebuilt jar in this fork requires Java 21 or higher.** Please make sure you have Java installed.
 
-**此程序需要 Java 17 或更高版本。** 请确保您已安装 Java。
+**此 fork 当前提供的 jar 需要 Java 21 或更高版本。** 请确保您已安装 Java。
 
 You can right-click the jar file and select "Java(TM) Platform SE binary" as the opening method.
 
@@ -67,6 +77,10 @@ The top-left part is the **Parameter Settings** area, which includes:
 **Version**: The Minecraft version to use. Options: 1.21.1, 1.20.1, 1.19.2, 1.18.2 (default: 1.21.1).
 
 **版本**：要使用的 Minecraft 版本。选项：1.21.1、1.20.1、1.19.2、1.18.2（默认：1.21.1）。
+
+**World Preset**: Choose between **Normal** and **Large Biomes**. Large Biomes support is available for all supported versions in this fork.
+
+**世界预设**：可在 **普通世界** 和 **巨型生物群系** 之间切换。此 fork 中的所有受支持版本都可使用巨型生物群系搜索。
 
 **MinX/MaxX/MinZ/MaxZ (x512)**: The coordinate range to search for Swamp Huts. The default values are the world boundaries (-58594 to 58593). Valid range is -30,000,000 to 30,000,000.
 
@@ -144,6 +158,7 @@ The search will process each seed in the list sequentially. The progress bar sho
 - **Result sorting**: Sort results by Y-coordinate or distance
 - **Export functionality**: Export search results or seed lists
 - **Version support**: Supports multiple Minecraft versions (1.18.2, 1.19.2, 1.20.1, 1.21.1)
+- **World preset support**: Supports both Normal and Large Biomes
 - **Batch processing**: Process multiple seeds from a list file
 
 - **多线程搜索**：支持多线程并行搜索以提高效率
@@ -152,6 +167,7 @@ The search will process each seed in the list sequentially. The progress bar sho
 - **结果排序**：按 Y 坐标或距离排序结果
 - **导出功能**：导出搜索结果或种子列表
 - **版本支持**：支持多个 Minecraft 版本（1.18.2、1.19.2、1.20.1、1.21.1）
+- **世界预设支持**：支持普通世界和巨型生物群系
 - **批量处理**：从列表文件处理多个种子
 
 ## Libraries mainly used in this program / 此程序主要使用的库
@@ -196,4 +212,3 @@ The search will process each seed in the list sequentially. The progress bar sho
 
 **Every seed has a dream of a low Y Swamp Hut.**
 **每一个种子都有一个低y女巫小屋的梦想。**
-
