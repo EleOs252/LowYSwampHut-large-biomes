@@ -305,10 +305,13 @@ public class SearchCoords {
                             checker.clearMemory();
                             continue;
                         }
-                        // 计算整个女巫小屋的实际高度
+                        // 优先使用真实生成的小屋最低Y（地板Y-1），未生成时再回退到地形估算高度
                         int hutX = 16 * pos.getX();
                         int hutZ = 16 * pos.getZ();
-                        Result result = checkHeight(seed, hutX, hutZ, mcVersion, worldPresetMode);
+                        Integer generatedFloorY = findGeneratedHutFloorY(seed, hutX, hutZ, worldPresetMode);
+                        Result result = generatedFloorY != null
+                                ? new Result(hutX, hutZ, generatedFloorY - 1)
+                                : checkHeight(seed, hutX, hutZ, mcVersion, worldPresetMode);
 
                         // 只有当高度 <= maxHeight 时才输出
                         if (!(result.height <= maxHeight)) {
@@ -316,13 +319,13 @@ public class SearchCoords {
                             continue;
                         }
                         if (worldPresetMode == WorldPresetMode.LARGE_BIOMES
-                                && !checkHutGeneration(seed, hutX, hutZ, maxHeight, worldPresetMode)) {
+                                && generatedFloorY == null) {
                             checker.clearMemory();
                             continue;
                         }
                         // 如果开启了精确检查，检查女巫小屋是否可以生成
                         String resultStr = result.toString();
-                        if (checkGeneration && !checkHutGeneration(seed, hutX, hutZ, maxHeight, worldPresetMode)) {
+                        if (checkGeneration && generatedFloorY == null) {
                             resultStr += " x";
                         }
                         synchronized (results) {
@@ -360,21 +363,24 @@ public class SearchCoords {
 
     // 检查女巫小屋是否可以生成（检查云杉木板）
     public static boolean checkHutGeneration(long seed, int hutX, int hutZ, double maxHeight, WorldPresetMode worldPresetMode) {
+        return findGeneratedHutFloorY(seed, hutX, hutZ, worldPresetMode) != null;
+    }
+
+    public static Integer findGeneratedHutFloorY(long seed, int hutX, int hutZ, WorldPresetMode worldPresetMode) {
         SeedChecker checker = SeedCheckerFactory.create(seed, TargetState.STRUCTURES, SeedCheckerDimension.OVERWORLD, worldPresetMode);
         try {
-            int startY = (int) (maxHeight + 10);
-            for (int y = startY; y >= -54; y--) {
+            for (int y = -64; y <= 200; y++) {
                 if (checker.getBlock(hutX + 2, y, hutZ + 2) == Blocks.SPRUCE_PLANKS) {
-                    return true;
+                    return y;
                 }
             }
-            return false;
+            return null;
         } finally {
             checker.clearMemory();
         }
     }
 
-    // 计算女巫小屋的高度
+    // 估算女巫小屋所在区域的地形高度，用作未生成结构时的回退值
     public static Result checkHeight(long seed, int x, int z, MCVersion mcVersion, WorldPresetMode worldPresetMode) {
         long structureSeed = seed & 281474976710655L;
         ChunkRand rand = new ChunkRand();
