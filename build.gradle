@@ -44,7 +44,6 @@ test {
 shadowJar {
     archiveBaseName.set('LowYSwampHut')
     archiveClassifier.set('')
-    archiveVersion.set('')
     mergeServiceFiles()
 }
 
@@ -54,7 +53,6 @@ task buildMainJar(type: com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJ
     description = 'Creates a fat JAR for LowYSwampHutForFixedSeed'
     archiveBaseName.set('LowYSwampHutForFixedSeedGUI')
     archiveClassifier.set('')
-    archiveVersion.set('')
     from sourceSets.main.output
     configurations = [project.configurations.runtimeClasspath]
     manifest {
